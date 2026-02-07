@@ -8,37 +8,51 @@
 
 ## Next Steps: Testing
 
-### 1. Generate SSH Deploy Key for annextubetesting
+### 1. Generate SSH Deploy Keys (Repository-Local)
 
 ```bash
-# Generate key pair
-ssh-keygen -t ed25519 -C "annextubetesting-deploy" -f ~/.ssh/annextubetesting_deploy -N ""
+# annextubetesting
+cd /home/yoh/proj/annextubes/annextubetesting
+mkdir -p .git/ssh
+ssh-keygen -t ed25519 -C "annextubetesting-deploy" -f .git/ssh/deploy -N ""
+git config core.sshCommand "ssh -i $(pwd)/.git/ssh/deploy -F /dev/null"
 
-# Display public key (copy this)
-cat ~/.ssh/annextubetesting_deploy.pub
-
-# Display private key (copy this separately)
-cat ~/.ssh/annextubetesting_deploy
+# annextube-action
+cd /home/yoh/proj/annextube-action
+mkdir -p .git/ssh
+ssh-keygen -t ed25519 -C "annextube-action-deploy" -f .git/ssh/deploy -N ""
+git config core.sshCommand "ssh -i $(pwd)/.git/ssh/deploy -F /dev/null"
 ```
 
-### 2. Add Public Key as Deploy Key
+### 2. Add Public Keys as Deploy Keys
 
-**URL**: https://github.com/con/annextubetesting/settings/keys
+**annextubetesting**: https://github.com/con/annextubetesting/settings/keys
+```bash
+cat /home/yoh/proj/annextubes/annextubetesting/.git/ssh/deploy.pub
+```
+- Title: `GitHub Actions Deploy`
+- ✅ Check "Allow write access"
 
-- Click "Add deploy key"
-- **Title**: `GitHub Actions Deploy`
-- **Key**: Paste public key from above
-- ✅ **Check "Allow write access"**
-- Click "Add key"
+**annextube-action**: https://github.com/con/annextube-action/settings/keys
+```bash
+cat /home/yoh/proj/annextube-action/.git/ssh/deploy.pub
+```
+- Title: `GitHub Actions Deploy`
+- ✅ Check "Allow write access"
 
-### 3. Add Private Key as Secret
+### 3. Add Private Keys as Secrets
 
-**URL**: https://github.com/con/annextubetesting/settings/secrets/actions
+**annextubetesting**: https://github.com/con/annextubetesting/settings/secrets/actions
+```bash
+cat /home/yoh/proj/annextubes/annextubetesting/.git/ssh/deploy
+```
+- Name: `DEPLOY_KEY`
 
-- Click "New repository secret"
-- **Name**: `DEPLOY_KEY`
-- **Value**: Paste private key from above (entire file, including BEGIN/END lines)
-- Click "Add secret"
+**annextube-action**: https://github.com/con/annextube-action/settings/secrets/actions
+```bash
+cat /home/yoh/proj/annextube-action/.git/ssh/deploy
+```
+- Name: `DEPLOY_KEY`
 
 ### 4. Push annextube-action to GitHub
 
@@ -131,8 +145,8 @@ If deployment fails:
 
 4. **Test SSH key locally**:
    ```bash
-   ssh-add ~/.ssh/annextubetesting_deploy
-   ssh -T git@github.com
+   cd /home/yoh/proj/annextubes/annextubetesting
+   ssh -i .git/ssh/deploy -T git@github.com
    # Should show: "Hi con/annextubetesting! ..."
    ```
 
@@ -156,16 +170,6 @@ To set up another archive repository:
 5. Enable GitHub Pages in settings
 
 The action is reusable - same workflow file works for all repositories!
-
-## Clean Up
-
-After adding keys to GitHub, you can remove local copies:
-
-```bash
-rm ~/.ssh/annextubetesting_deploy*
-```
-
-Or keep them in a secure backup location.
 
 ---
 
