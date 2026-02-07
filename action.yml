@@ -137,9 +137,26 @@ runs:
         echo "Running: $CMD"
         $CMD
 
-        # Push to gh-pages using GITHUB_TOKEN
+        # Debug: Check branch exists
+        echo "Verifying $GH_BRANCH branch exists..."
+        git rev-parse --verify "$GH_BRANCH" || {
+          echo "ERROR: $GH_BRANCH branch not found after prepare-ghpages"
+          exit 1
+        }
+
+        # Debug: Show what we're about to push
+        echo "Current branch: $(git branch --show-current)"
+        echo "Branches: $(git branch -a | grep -E 'master|main|gh-pages' || echo 'none found')"
+        echo "Target repository: ${GITHUB_REPOSITORY}"
         echo "Pushing to $GH_BRANCH branch..."
-        git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GH_BRANCH" --force
+
+        # Push to gh-pages using GITHUB_TOKEN
+        if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GH_BRANCH" --force; then
+          echo "✓ Push successful!"
+        else
+          echo "ERROR: Push failed with exit code $?"
+          exit 1
+        fi
 
         echo "✓ Deployed successfully!"
         echo "Site will be available at: https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/"
