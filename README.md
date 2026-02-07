@@ -7,40 +7,17 @@ This action builds the web interface and deploys your archive to GitHub Pages wh
 ## Features
 
 - ✅ **Automatic deployment** on push to main/master branch
-- ✅ **SSH-based authentication** (no personal access tokens needed)
+- ✅ **Zero configuration** - uses automatic `GITHUB_TOKEN` (no secrets needed!)
 - ✅ **git-annex support** - annexed files remain as symlinks (safe default)
 - ✅ **External URL support** - uses annex remote URLs if available (Phase 2)
 - ✅ **Configurable** - control what gets deployed
 - ✅ **Pinned versions** - no surprise upgrades (opt-in auto-upgrade available)
 - ✅ **Fast** - only rebuilds when needed
-- ✅ **Secure** - uses repository-specific deploy keys
+- ✅ **Secure** - uses built-in GitHub Actions authentication
 
 ## Quick Start
 
-### 1. Set up SSH Deploy Key
-
-Generate an SSH key pair for deployment:
-
-```bash
-ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/annextube_deploy -N ""
-```
-
-**Add the public key to your repository:**
-- Go to `https://github.com/YOUR_ORG/YOUR_REPO/settings/keys`
-- Click "Add deploy key"
-- Title: `GitHub Actions Deploy`
-- Key: Paste contents of `~/.ssh/annextube_deploy.pub`
-- ✅ **Check "Allow write access"**
-- Click "Add key"
-
-**Add the private key as a secret:**
-- Go to `https://github.com/YOUR_ORG/YOUR_REPO/settings/secrets/actions`
-- Click "New repository secret"
-- Name: `DEPLOY_KEY`
-- Value: Paste contents of `~/.ssh/annextube_deploy` (the private key)
-- Click "Add secret"
-
-### 2. Create Workflow File
+### 1. Create Workflow File
 
 Create `.github/workflows/deploy-ghpages.yml` in your repository:
 
@@ -70,11 +47,10 @@ jobs:
 
       - name: Deploy to GitHub Pages
         uses: con/annextube-action@v1
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+        # Uses automatic GITHUB_TOKEN - no secrets needed!
 ```
 
-### 3. Enable GitHub Pages
+### 2. Enable GitHub Pages
 
 - Go to `https://github.com/YOUR_ORG/YOUR_REPO/settings/pages`
 - **Source**: Deploy from a branch
@@ -82,7 +58,7 @@ jobs:
 - **Folder**: `/ (root)`
 - Click **Save**
 
-### 4. Push and Deploy
+### 3. Push and Deploy
 
 Push a commit to your repository:
 
@@ -95,6 +71,8 @@ git push origin master
 Your site will be deployed automatically and available at:
 `https://YOUR_ORG.github.io/YOUR_REPO/`
 
+**No secrets or SSH keys needed!** The action uses the automatic `GITHUB_TOKEN` provided by GitHub Actions.
+
 ## Configuration
 
 ### Inputs
@@ -102,11 +80,12 @@ Your site will be deployed automatically and available at:
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `repo-path` | Path to the annextube repository | No | `.` |
-| `ssh-private-key` | SSH private key for deployment | **Yes** | - |
+| `github-token` | GitHub token for deployment | No | `${{ github.token }}` (automatic) |
 | `gh-pages-branch` | Target branch for GitHub Pages | No | `gh-pages` |
 | `build-frontend` | Build frontend before deployment | No | `true` |
 | `copy-data` | Copy data files to gh-pages | No | `true` |
-| `annextube-version` | Version of annextube to install | No | `git+https://github.com/con/annextube.git@enh-gh_pages` |
+| `annextube-version` | Version of annextube to install | No | Pinned version |
+| `auto-upgrade-frontend` | Auto-upgrade to latest annextube | No | `false` |
 
 ### Outputs
 
@@ -280,11 +259,10 @@ This creates PRs when new action versions are released, allowing you to review a
 
 ## Troubleshooting
 
-### Deployment fails with "Permission denied (publickey)"
+### Deployment fails with "Permission denied"
 
-- Verify the deploy key is added to repository settings
-- Ensure "Allow write access" is checked
-- Confirm the secret name matches (`DEPLOY_KEY`)
+- Ensure `permissions: contents: write` is set in workflow
+- Check that GITHUB_TOKEN has not been disabled in repository settings
 
 ### Site shows 404 or broken assets
 
@@ -308,10 +286,11 @@ See [annextubetesting](https://github.com/con/annextubetesting) for a working ex
 
 ## Security
 
-- **SSH keys are repository-specific** - each archive uses its own deploy key
-- **Private keys never leave GitHub** - stored securely in GitHub Secrets
-- **No personal access tokens needed** - uses deploy keys instead
+- **No secrets required** - uses automatic `GITHUB_TOKEN`
+- **Scoped permissions** - token only has access to the repository it runs in
+- **Automatic expiration** - token expires after workflow completes
 - **Read-only source access** - action only writes to gh-pages branch
+- **No credential storage** - nothing to manage or rotate
 
 ## License
 

@@ -1,180 +1,104 @@
-# AnnexTube Action Setup Guide
+# Testing Guide - Initial Deployment
 
-## What We've Built
+Quick guide for testing the action with annextubetesting.
 
-✅ **`con/annextube-action`** - Reusable GitHub Action
-✅ **Workflow in annextubetesting** - `.github/workflows/deploy-ghpages.yml`
-✅ **Comprehensive documentation** - README, setup guides
+## Prerequisites
 
-## Next Steps: Testing
+- annextube-action repository: `/home/yoh/proj/annextube-action`
+- annextubetesting repository: `/home/yoh/proj/annextubes/annextubetesting`
+- Both have workflow files committed
+- Local git configured with SSH keys (already done)
 
-### 1. Generate SSH Deploy Keys (Repository-Local)
+## Testing Steps
 
-```bash
-# annextubetesting
-cd /home/yoh/proj/annextubes/annextubetesting
-mkdir -p .git/ssh
-ssh-keygen -t ed25519 -C "annextubetesting-deploy" -f .git/ssh/deploy -N ""
-git config core.sshCommand "ssh -i $(pwd)/.git/ssh/deploy -F /dev/null"
-
-# annextube-action
-cd /home/yoh/proj/annextube-action
-mkdir -p .git/ssh
-ssh-keygen -t ed25519 -C "annextube-action-deploy" -f .git/ssh/deploy -N ""
-git config core.sshCommand "ssh -i $(pwd)/.git/ssh/deploy -F /dev/null"
-```
-
-### 2. Add Public Keys as Deploy Keys
-
-**annextubetesting**: https://github.com/con/annextubetesting/settings/keys
-```bash
-cat /home/yoh/proj/annextubes/annextubetesting/.git/ssh/deploy.pub
-```
-- Title: `GitHub Actions Deploy`
-- ✅ Check "Allow write access"
-
-**annextube-action**: https://github.com/con/annextube-action/settings/keys
-```bash
-cat /home/yoh/proj/annextube-action/.git/ssh/deploy.pub
-```
-- Title: `GitHub Actions Deploy`
-- ✅ Check "Allow write access"
-
-### 3. Add Private Keys as Secrets
-
-**annextubetesting**: https://github.com/con/annextubetesting/settings/secrets/actions
-```bash
-cat /home/yoh/proj/annextubes/annextubetesting/.git/ssh/deploy
-```
-- Name: `DEPLOY_KEY`
-
-**annextube-action**: https://github.com/con/annextube-action/settings/secrets/actions
-```bash
-cat /home/yoh/proj/annextube-action/.git/ssh/deploy
-```
-- Name: `DEPLOY_KEY`
-
-### 4. Push annextube-action to GitHub
+### 1. Push annextube-action
 
 ```bash
 cd /home/yoh/proj/annextube-action
 git push origin main
 ```
 
-### 5. Push annextubetesting workflow to GitHub
+### 2. Enable GitHub Pages for annextubetesting
+
+**URL**: https://github.com/con/annextubetesting/settings/pages
+
+- **Source**: Deploy from a branch
+- **Branch**: `gh-pages`
+- **Folder**: `/ (root)`
+- Click **Save**
+
+### 3. Push annextubetesting (triggers workflow)
 
 ```bash
 cd /home/yoh/proj/annextubes/annextubetesting
 git push origin master
 ```
 
-This will trigger the workflow automatically!
+This automatically triggers the deployment workflow!
 
-### 6. Monitor Deployment
+### 4. Monitor Deployment
 
-**URL**: https://github.com/con/annextubetesting/actions
+**Actions**: https://github.com/con/annextubetesting/actions
 
-- Watch the "Deploy to GitHub Pages" workflow run
-- Should take ~3-5 minutes
-- Check for any errors
+- Watch "Deploy to GitHub Pages" workflow
+- Should complete in ~3-5 minutes
+- Check logs if any errors
 
-### 7. Verify Deployment
+### 5. Verify Deployment
 
-**URL**: https://con.github.io/annextubetesting/
+**Live site**: https://con.github.io/annextubetesting/
 
-- Site should load with thumbnails visible
-- Check videos list appears
-- Verify navigation works
+- Thumbnails should be visible
+- Videos list appears
+- Navigation works
+- No console errors
 
-## Expected Behavior
+## What Happens
 
-When you push changes to:
-- `videos/**`
-- `playlists/**`
-- `.annextube/**`
-- `.gitattributes`
-- `authors.tsv`
-
-The workflow will:
-1. Checkout repository
-2. Install dependencies (Python, Node.js, git-annex, annextube)
-3. Build frontend with base path `/annextubetesting/`
-4. Create/update gh-pages branch
-5. Push to GitHub
-6. GitHub Pages deploys automatically
-
-## Repository Status
-
-### annextube-action (con/annextube-action)
-```
-✅ action.yml - Action definition
-✅ README.md - Main documentation
-✅ CHANGELOG.md - Version history
-✅ docs/setup-deploy-key.md - SSH key setup guide
-
-Status: Ready to push to GitHub
-Commit: 69e4463 "Initial release: GitHub Actions for annextube deployment"
-```
-
-### annextubetesting (con/annextubetesting)
-```
-✅ .github/workflows/deploy-ghpages.yml - Deployment workflow
-✅ gh-pages branch exists (from manual testing)
-✅ Thumbnails unannexed (ready for deployment)
-
-Status: Ready to test automated deployment
-Commit: 5facc8a "Add GitHub Actions workflow for automatic Pages deployment"
-```
+1. Workflow triggers on push to master
+2. Checks out repository with full history
+3. Action installs Python, Node.js, git-annex, annextube
+4. Builds frontend with base path `/annextubetesting/`
+5. Creates/updates gh-pages branch
+6. Pushes to gh-pages using automatic GITHUB_TOKEN
+7. GitHub Pages deploys automatically
 
 ## Troubleshooting
 
-If deployment fails:
+### Workflow doesn't trigger
 
-1. **Check deploy key has write access**:
-   - Go to https://github.com/con/annextubetesting/settings/keys
-   - Should show "Read/Write" not "Read-only"
+- Check workflow file is in `.github/workflows/`
+- Verify changes match path filters (videos/**, playlists/**)
+- Try manual trigger via Actions tab → "Run workflow"
 
-2. **Check secret is named correctly**:
-   - Go to https://github.com/con/annextubetesting/settings/secrets/actions
-   - Should be exactly `DEPLOY_KEY` (case-sensitive)
+### Build fails
 
-3. **Check workflow logs**:
-   - Go to https://github.com/con/annextubetesting/actions
-   - Click on failed run
-   - Check each step for errors
+- Check Actions logs for specific error
+- Ensure `permissions: contents: write` is in workflow
+- Verify git-annex installation succeeded
 
-4. **Test SSH key locally**:
-   ```bash
-   cd /home/yoh/proj/annextubes/annextubetesting
-   ssh -i .git/ssh/deploy -T git@github.com
-   # Should show: "Hi con/annextubetesting! ..."
-   ```
+### Page shows 404
 
-## What Happens Next
+- Confirm GitHub Pages is enabled
+- Check branch is `gh-pages` not `master`
+- Wait a few minutes for deployment
+
+### Broken assets
+
+- Check browser console for errors
+- Verify base path in index.html: `/annextubetesting/`
+- Confirm all assets exist in gh-pages branch
+
+## Expected Result
 
 After successful deployment:
 
-1. **Automatic updates**: Any push to master with content changes triggers deployment
-2. **Manual deployment**: Can trigger via "Run workflow" button in Actions tab
-3. **Live site**: https://con.github.io/annextubetesting/ updates automatically
-4. **Monitoring**: Check Actions tab for deployment history
+- ✅ gh-pages branch exists with frontend + data
+- ✅ Site accessible at https://con.github.io/annextubetesting/
+- ✅ Thumbnails visible (unannexed from previous step)
+- ✅ Videos list shows metadata
+- ✅ Navigation functional
 
-## Future Archives
+## No Secrets Required!
 
-To set up another archive repository:
-
-1. Generate separate SSH key for that repo
-2. Add deploy key with write access
-3. Add private key as `DEPLOY_KEY` secret
-4. Copy workflow file from annextubetesting
-5. Enable GitHub Pages in settings
-
-The action is reusable - same workflow file works for all repositories!
-
----
-
-**Ready to proceed?**
-
-1. Set up SSH keys (steps 1-3)
-2. Push both repositories (steps 4-5)
-3. Watch the magic happen! ✨
+The action uses automatic `GITHUB_TOKEN` - no SSH keys or deploy keys needed. Just push and it works!
