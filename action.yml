@@ -1,0 +1,155 @@
+name: 'AnnexTube GitHub Pages Deploy'
+description: 'Automatically deploy annextube archives to GitHub Pages'
+branding:
+  icon: 'upload-cloud'
+  color: 'blue'
+
+inputs:
+  repo-path:
+    description: 'Path to the annextube repository (default: .)'
+    required: false
+    default: '.'
+
+  ssh-private-key:
+    description: 'SSH private key for pushing to gh-pages branch (required for deployment)'
+    required: true
+
+  gh-pages-branch:
+    description: 'Target branch name for GitHub Pages (default: gh-pages)'
+    required: false
+    default: 'gh-pages'
+
+  build-frontend:
+    description: 'Build frontend before deployment (default: true)'
+    required: false
+    default: 'true'
+
+  copy-data:
+    description: 'Copy data files (videos/, playlists/) to gh-pages branch (default: true)'
+    required: false
+    default: 'true'
+
+  annextube-version:
+    description: 'Version of annextube to install (default: latest from git)'
+    required: false
+    default: 'git+https://github.com/con/annextube.git@enh-gh_pages'
+
+outputs:
+  deployment-url:
+    description: 'The URL where the site will be deployed'
+    value: ${{ steps.deploy.outputs.url }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Setup SSH key for deployment
+    - name: Setup SSH key
+      shell: bash
+      env:
+        SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ inputs.ssh-private-key }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+
+        # Start ssh-agent
+        ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+        ssh-add ~/.ssh/deploy_key
+
+        # Configure git to use SSH for github.com
+        git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+    # Install Python and dependencies
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      shell: bash
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Install annextube
+      shell: bash
+      run: |
+        uv pip install --system "${{ inputs.annextube-version }}"
+
+    # Setup Node.js for frontend building
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+
+    # Install git-annex (required for annexed repositories)
+    - name: Install git-annex
+      shell: bash
+      run: |
+        # Use neurodebian for latest git-annex
+        sudo apt-get update
+        sudo apt-get install -y git-annex
+        git annex version
+
+    # Configure git
+    - name: Configure git
+      shell: bash
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    # Run deployment
+    - name: Deploy to GitHub Pages
+      id: deploy
+      shell: bash
+      env:
+        SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        REPO_PATH: ${{ inputs.repo-path }}
+        GH_BRANCH: ${{ inputs.gh-pages-branch }}
+        BUILD_FRONTEND: ${{ inputs.build-frontend }}
+        COPY_DATA: ${{ inputs.copy-data }}
+      run: |
+        cd "$REPO_PATH"
+
+        # Detect repository name from git remote
+        REMOTE_URL=$(git remote get-url origin)
+        REPO_NAME=$(echo "$REMOTE_URL" | sed -n 's#.*/\([^/]*\)\.git#\1#p' | head -1)
+
+        if [ -z "$REPO_NAME" ]; then
+          # Try without .git suffix
+          REPO_NAME=$(echo "$REMOTE_URL" | sed -n 's#.*/\([^/]*\)$#\1#p' | head -1)
+        fi
+
+        echo "Repository name: $REPO_NAME"
+        echo "url=https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_OUTPUT
+
+        # Build command
+        CMD="python -m annextube.cli prepare-ghpages --output-dir . --repo-name $REPO_NAME --gh-branch $GH_BRANCH"
+
+        if [ "$BUILD_FRONTEND" != "true" ]; then
+          CMD="$CMD --no-build-frontend"
+        fi
+
+        if [ "$COPY_DATA" != "true" ]; then
+          CMD="$CMD --no-copy-data"
+        fi
+
+        echo "Running: $CMD"
+        $CMD
+
+        # Push to gh-pages
+        echo "Pushing to $GH_BRANCH branch..."
+        git push origin "$GH_BRANCH" --force
+
+        echo "✓ Deployed successfully!"
+        echo "Site will be available at: https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/"
+
+    # Cleanup SSH key
+    - name: Cleanup SSH key
+      if: always()
+      shell: bash
+      run: |
+        rm -f ~/.ssh/deploy_key
+        ssh-agent -k || true
