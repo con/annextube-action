@@ -126,7 +126,7 @@ runs:
         echo "url=https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_OUTPUT
 
         # Build command
-        CMD="python -m annextube.cli prepare-ghpages --output-dir . --repo-name $REPO_NAME --gh-branch $GH_BRANCH"
+        CMD="annextube prepare-ghpages --output-dir . --repo-name $REPO_NAME --gh-branch $GH_BRANCH"
 
         if [ "$BUILD_FRONTEND" != "true" ]; then
           CMD="$CMD --no-build-frontend"
