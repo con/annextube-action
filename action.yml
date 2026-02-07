@@ -64,6 +64,14 @@ runs:
       run: |
         uv pip install --system "${{ inputs.annextube-version }}"
 
+    # Checkout annextube repository to get frontend source
+    - name: Checkout annextube for frontend
+      uses: actions/checkout@v4
+      with:
+        repository: 'con/annextube'
+        ref: 'enh-gh_pages'
+        path: '_annextube_source'
+
     # Setup Node.js for frontend building
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -96,6 +104,7 @@ runs:
         GH_BRANCH: ${{ inputs.gh-pages-branch }}
         BUILD_FRONTEND: ${{ inputs.build-frontend }}
         COPY_DATA: ${{ inputs.copy-data }}
+        ANNEXTUBE_FRONTEND_DIR: ${{ github.workspace }}/_annextube_source/frontend
       run: |
         # Use provided token or fall back to automatic GITHUB_TOKEN
         if [ -n "$INPUT_GITHUB_TOKEN" ]; then
