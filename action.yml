@@ -13,7 +13,6 @@ inputs:
   github-token:
     description: 'GitHub token for pushing to gh-pages branch (default: GITHUB_TOKEN)'
     required: false
-    default: ${{ github.token }}
 
   gh-pages-branch:
     description: 'Target branch name for GitHub Pages (default: gh-pages)'
@@ -94,12 +93,18 @@ runs:
       id: deploy
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         REPO_PATH: ${{ inputs.repo-path }}
         GH_BRANCH: ${{ inputs.gh-pages-branch }}
         BUILD_FRONTEND: ${{ inputs.build-frontend }}
         COPY_DATA: ${{ inputs.copy-data }}
       run: |
+        # Use provided token or fall back to automatic GITHUB_TOKEN
+        if [ -n "$INPUT_GITHUB_TOKEN" ]; then
+          GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
+        fi
+        export GITHUB_TOKEN
+
         cd "$REPO_PATH"
 
         # Configure git to use GITHUB_TOKEN for push
