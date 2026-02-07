@@ -8,8 +8,10 @@ This action builds the web interface and deploys your archive to GitHub Pages wh
 
 - ✅ **Automatic deployment** on push to main/master branch
 - ✅ **SSH-based authentication** (no personal access tokens needed)
-- ✅ **git-annex support** for annexed repositories
+- ✅ **git-annex support** - annexed files remain as symlinks (safe default)
+- ✅ **External URL support** - uses annex remote URLs if available (Phase 2)
 - ✅ **Configurable** - control what gets deployed
+- ✅ **Pinned versions** - no surprise upgrades (opt-in auto-upgrade available)
 - ✅ **Fast** - only rebuilds when needed
 - ✅ **Secure** - uses repository-specific deploy keys
 
@@ -112,6 +114,33 @@ Your site will be deployed automatically and available at:
 |--------|-------------|
 | `deployment-url` | The URL where the site will be deployed |
 
+### Annexed Files Behavior
+
+By default, **annexed files remain as symlinks** in the gh-pages branch. This is the safe default:
+
+```yaml
+- uses: con/annextube-action@v1
+  with:
+    ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+    copy-data: true  # Copies files as-is (keeps annexing)
+```
+
+**To make files directly available (unannexed)**, run `annextube unannex` before deployment:
+
+```yaml
+- name: Unannex thumbnails for web viewing
+  run: |
+    annextube unannex --output-dir . --pattern "videos/*/*/*/thumbnail.jpg"
+    git add -A
+    git commit -m "Unannex thumbnails for GitHub Pages" || true
+
+- uses: con/annextube-action@v1
+  with:
+    ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+```
+
+**External URL support** (Phase 2): When videos are stored on git-annex special remotes (S3, WebDAV), the web interface will automatically use those URLs for playback.
+
 ### Advanced Configuration
 
 **Skip frontend build** (if you pre-build elsewhere):
@@ -186,12 +215,66 @@ on:
   workflow_dispatch:
 ```
 
+## Version Management
+
+### Pinned Versions (Default - Recommended)
+
+By default, the action uses a **pinned version** of annextube to avoid unexpected breaking changes:
+
+```yaml
+- uses: con/annextube-action@v1  # Action version pinned
+  with:
+    ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+    # annextube-version uses default pinned version
+```
+
+**Benefits:**
+- ✅ Predictable deployments
+- ✅ No surprise upgrades
+- ✅ Reproducible builds
+
+### Auto-Upgrade (Opt-in)
+
+Enable automatic frontend upgrades if you want latest features:
+
+```yaml
+- uses: con/annextube-action@v1
+  with:
+    ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+    annextube-version: 'latest'
+    auto-upgrade-frontend: true
+```
+
+**⚠️ Warning:** May introduce breaking changes. Test in a separate branch first.
+
+### Dependabot for Version Upgrades
+
+Recommended: Use Dependabot to automatically create PRs for action version upgrades.
+
+Create `.github/dependabot.yml`:
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+```
+
+This creates PRs when new action versions are released, allowing you to review and test before merging.
+
 ## How It Works
 
 1. **Checkout**: Fetches your repository with full history
-2. **Setup**: Installs Python, Node.js, git-annex, and annextube
+2. **Setup**: Installs Python, Node.js, git-annex, and annextube (pinned version)
 3. **Build**: Builds the frontend with correct base path
 4. **Deploy**: Creates/updates gh-pages branch with built assets
+   - **Annexed files remain as symlinks** (safe default)
+   - External annex URLs used if available (Phase 2)
 5. **Push**: Pushes to gh-pages using SSH deploy key
 6. **Publish**: GitHub Pages automatically serves the new content
 
