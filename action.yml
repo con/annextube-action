@@ -39,6 +39,21 @@ inputs:
     required: false
     default: 'false'
 
+  get-annex:
+    description: 'Strategy for fetching annexed files: "get" (mandatory, fail if unavailable), "try-get" (optional, keep symlinks if unavailable), "remove-absent" (remove unfetchable symlinks)'
+    required: false
+    default: 'try-get'
+
+  install-yt-dlp:
+    description: 'Install yt-dlp for fetching videos from YouTube URL remotes'
+    required: false
+    default: 'true'
+
+  annex-remote:
+    description: 'Specific git-annex remote to use for fetching content (e.g., "github-lfs"). If not specified, tries all available remotes.'
+    required: false
+    default: ''
+
 outputs:
   deployment-url:
     description: 'The URL where the site will be deployed'
@@ -82,10 +97,17 @@ runs:
     - name: Install git-annex
       shell: bash
       run: |
-        # Use neurodebian for latest git-annex
         sudo apt-get update
         sudo apt-get install -y git-annex
         git annex version
+
+    # Install yt-dlp (for fetching from YouTube URL remotes)
+    - name: Install yt-dlp
+      if: ${{ inputs.install-yt-dlp == 'true' }}
+      shell: bash
+      run: |
+        pip install yt-dlp
+        yt-dlp --version
 
     # Configure git
     - name: Configure git
@@ -104,6 +126,8 @@ runs:
         GH_BRANCH: ${{ inputs.gh-pages-branch }}
         BUILD_FRONTEND: ${{ inputs.build-frontend }}
         COPY_DATA: ${{ inputs.copy-data }}
+        GET_ANNEX: ${{ inputs.get-annex }}
+        ANNEX_REMOTE: ${{ inputs.annex-remote }}
         ANNEXTUBE_FRONTEND_DIR: ${{ github.workspace }}/_annextube_source/frontend
       run: |
         # Use provided token or fall back to automatic GITHUB_TOKEN
@@ -145,6 +169,65 @@ runs:
 
         echo "Running: $CMD"
         $CMD
+
+        # Fetch annexed content if requested
+        if [ "$COPY_DATA" = "true" ] && [ "$GET_ANNEX" != "none" ]; then
+          echo "Checking out $GH_BRANCH branch to fetch annexed content..."
+          git checkout "$GH_BRANCH"
+
+          # Build git annex get command
+          ANNEX_CMD="git annex get"
+
+          # Add specific remote if specified
+          if [ -n "$ANNEX_REMOTE" ]; then
+            ANNEX_CMD="$ANNEX_CMD --from=$ANNEX_REMOTE"
+            echo "Fetching annexed content from remote: $ANNEX_REMOTE"
+          else
+            echo "Fetching annexed content from all available remotes..."
+          fi
+
+          # Add strategy-specific flags
+          case "$GET_ANNEX" in
+            get)
+              # Mandatory fetch - fail if unavailable
+              echo "Strategy: mandatory fetch (will fail if content unavailable)"
+              $ANNEX_CMD videos/ playlists/ || {
+                echo "ERROR: Failed to fetch all annexed content"
+                exit 1
+              }
+              ;;
+            try-get)
+              # Optional fetch - continue if unavailable
+              echo "Strategy: optional fetch (will keep symlinks if unavailable)"
+              $ANNEX_CMD videos/ playlists/ || echo "Warning: Some annexed content unavailable, keeping symlinks"
+              ;;
+            remove-absent)
+              # Try to fetch, remove symlinks that fail
+              echo "Strategy: remove unfetchable symlinks"
+              $ANNEX_CMD videos/ playlists/ || true
+              # Remove any remaining git-annex symlinks
+              find videos playlists -type l 2>/dev/null | while read symlink; do
+                target=$(readlink "$symlink")
+                if echo "$target" | grep -q '.git/annex/objects'; then
+                  echo "Removing unfetchable symlink: $symlink"
+                  rm "$symlink"
+                fi
+              done
+              ;;
+            *)
+              echo "Unknown get-annex strategy: $GET_ANNEX"
+              exit 1
+              ;;
+          esac
+
+          # Commit any changes (removed symlinks, etc.)
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git add -A
+            git commit -m "Update annexed content for GitHub Pages" || true
+          fi
+
+          echo "✓ Annexed content processed"
+        fi
 
         # Debug: Check branch exists
         echo "Verifying $GH_BRANCH branch exists..."
