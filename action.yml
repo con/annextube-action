@@ -175,52 +175,72 @@ runs:
           echo "Checking out $GH_BRANCH branch to fetch annexed content..."
           git checkout "$GH_BRANCH"
 
-          # Build git annex get command
-          ANNEX_CMD="git annex get"
+          # Debug: Check what's in the branch
+          echo "Files in gh-pages:"
+          ls -la videos/2026/02/*/video.mkv 2>/dev/null | head -3 || echo "No video files found"
 
-          # Add specific remote if specified
-          if [ -n "$ANNEX_REMOTE" ]; then
-            ANNEX_CMD="$ANNEX_CMD --from=$ANNEX_REMOTE"
-            echo "Fetching annexed content from remote: $ANNEX_REMOTE"
+          # Debug: Check git-annex status
+          echo "Git-annex remotes:"
+          git annex info || echo "Git-annex not initialized"
+
+          # Check if there are any annexed files
+          ANNEXED_COUNT=$(git annex find videos/ playlists/ 2>/dev/null | wc -l || echo "0")
+          echo "Found $ANNEXED_COUNT annexed files"
+
+          if [ "$ANNEXED_COUNT" -eq "0" ]; then
+            echo "No annexed files found to fetch"
           else
-            echo "Fetching annexed content from all available remotes..."
+            # Build git annex get command
+            ANNEX_CMD="git annex get"
+
+            # Add specific remote if specified
+            if [ -n "$ANNEX_REMOTE" ]; then
+              ANNEX_CMD="$ANNEX_CMD --from=$ANNEX_REMOTE"
+              echo "Fetching annexed content from remote: $ANNEX_REMOTE"
+            else
+              echo "Fetching annexed content from all available remotes..."
+            fi
+
+            # Add strategy-specific flags
+            case "$GET_ANNEX" in
+              get)
+                # Mandatory fetch - fail if unavailable
+                echo "Strategy: mandatory fetch (will fail if content unavailable)"
+                $ANNEX_CMD videos/ playlists/ || {
+                  echo "ERROR: Failed to fetch all annexed content"
+                  exit 1
+                }
+                ;;
+              try-get)
+                # Optional fetch - continue if unavailable
+                echo "Strategy: optional fetch (will keep symlinks if unavailable)"
+                $ANNEX_CMD videos/ playlists/ || echo "Warning: Some annexed content unavailable, keeping symlinks"
+                ;;
+              remove-absent)
+                # Try to fetch, remove symlinks that fail
+                echo "Strategy: remove unfetchable symlinks"
+                $ANNEX_CMD videos/ playlists/ || true
+                # Remove any remaining git-annex symlinks
+                find videos playlists -type l 2>/dev/null | while read symlink; do
+                  target=$(readlink "$symlink")
+                  if echo "$target" | grep -q '.git/annex/objects'; then
+                    echo "Removing unfetchable symlink: $symlink"
+                    rm "$symlink"
+                  fi
+                done
+                ;;
+              *)
+                echo "Unknown get-annex strategy: $GET_ANNEX"
+                exit 1
+                ;;
+            esac
+
+            # Debug: Check if content was fetched
+            echo "Checking fetched content:"
+            ls -la videos/2026/02/*/video.mkv 2>/dev/null | head -3 || echo "No video files"
           fi
 
-          # Add strategy-specific flags
-          case "$GET_ANNEX" in
-            get)
-              # Mandatory fetch - fail if unavailable
-              echo "Strategy: mandatory fetch (will fail if content unavailable)"
-              $ANNEX_CMD videos/ playlists/ || {
-                echo "ERROR: Failed to fetch all annexed content"
-                exit 1
-              }
-              ;;
-            try-get)
-              # Optional fetch - continue if unavailable
-              echo "Strategy: optional fetch (will keep symlinks if unavailable)"
-              $ANNEX_CMD videos/ playlists/ || echo "Warning: Some annexed content unavailable, keeping symlinks"
-              ;;
-            remove-absent)
-              # Try to fetch, remove symlinks that fail
-              echo "Strategy: remove unfetchable symlinks"
-              $ANNEX_CMD videos/ playlists/ || true
-              # Remove any remaining git-annex symlinks
-              find videos playlists -type l 2>/dev/null | while read symlink; do
-                target=$(readlink "$symlink")
-                if echo "$target" | grep -q '.git/annex/objects'; then
-                  echo "Removing unfetchable symlink: $symlink"
-                  rm "$symlink"
-                fi
-              done
-              ;;
-            *)
-              echo "Unknown get-annex strategy: $GET_ANNEX"
-              exit 1
-              ;;
-          esac
-
-          # Commit any changes (removed symlinks, etc.)
+          # Commit any changes (fetched content, removed symlinks, etc.)
           if ! git diff --quiet || ! git diff --cached --quiet; then
             git add -A
             git commit -m "Update annexed content for GitHub Pages" || true
