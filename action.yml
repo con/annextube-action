@@ -98,8 +98,9 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y git-annex
+        sudo apt-get install -y git-annex git-lfs
         git annex version
+        git lfs version
 
     # Install yt-dlp (for fetching from YouTube URL remotes)
     - name: Install yt-dlp
@@ -115,6 +116,22 @@ runs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    # Configure git-lfs authentication for fetching from github-lfs remote
+    - name: Configure git-lfs authentication
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        # Use provided token or fall back to automatic GITHUB_TOKEN
+        if [ -n "$INPUT_GITHUB_TOKEN" ]; then
+          TOKEN="$INPUT_GITHUB_TOKEN"
+        else
+          TOKEN="${GITHUB_TOKEN}"
+        fi
+        # Configure git credential helper for LFS
+        echo "https://x-access-token:${TOKEN}@github.com" > ~/.git-credentials
+        git config --global credential.helper store
 
     # Run deployment
     - name: Deploy to GitHub Pages
@@ -172,75 +189,65 @@ runs:
 
         # Fetch annexed content if requested
         if [ "$COPY_DATA" = "true" ] && [ "$GET_ANNEX" != "none" ]; then
-          echo "Checking out $GH_BRANCH branch to fetch annexed content..."
+          echo "Fetching annexed content..."
           git checkout "$GH_BRANCH"
 
-          # Debug: Check what's in the branch
-          echo "Files in gh-pages:"
-          ls -la videos/2026/02/*/video.mkv 2>/dev/null | head -3 || echo "No video files found"
-
-          # Debug: Check git-annex status
-          echo "Git-annex remotes:"
-          git annex info || echo "Git-annex not initialized"
-
-          # Check if there are any annexed files
-          ANNEXED_COUNT=$(git annex find videos/ playlists/ 2>/dev/null | wc -l || echo "0")
-          echo "Found $ANNEXED_COUNT annexed files"
-
-          if [ "$ANNEXED_COUNT" -eq "0" ]; then
-            echo "No annexed files found to fetch"
-          else
-            # Build git annex get command
-            ANNEX_CMD="git annex get"
-
-            # Add specific remote if specified
-            if [ -n "$ANNEX_REMOTE" ]; then
-              ANNEX_CMD="$ANNEX_CMD --from=$ANNEX_REMOTE"
-              echo "Fetching annexed content from remote: $ANNEX_REMOTE"
-            else
-              echo "Fetching annexed content from all available remotes..."
+          # Enable specified remote if needed
+          if [ -n "$ANNEX_REMOTE" ]; then
+            git annex enableremote "$ANNEX_REMOTE" 2>&1 || echo "Remote already enabled or doesn't exist"
+            # Reconfigure git-lfs remote to use HTTPS (SSH not available in Actions)
+            LFS_URL=$(git config --get "remote.${ANNEX_REMOTE}.url" 2>/dev/null || true)
+            if echo "$LFS_URL" | grep -q "git@github.com:"; then
+              HTTPS_URL=$(echo "$LFS_URL" | sed 's|git@github.com:|https://github.com/|')
+              echo "Reconfiguring $ANNEX_REMOTE URL from SSH to HTTPS: $HTTPS_URL"
+              git config "remote.${ANNEX_REMOTE}.url" "$HTTPS_URL"
             fi
-
-            # Add strategy-specific flags
-            case "$GET_ANNEX" in
-              get)
-                # Mandatory fetch - fail if unavailable
-                echo "Strategy: mandatory fetch (will fail if content unavailable)"
-                $ANNEX_CMD videos/ playlists/ || {
-                  echo "ERROR: Failed to fetch all annexed content"
-                  exit 1
-                }
-                ;;
-              try-get)
-                # Optional fetch - continue if unavailable
-                echo "Strategy: optional fetch (will keep symlinks if unavailable)"
-                $ANNEX_CMD videos/ playlists/ || echo "Warning: Some annexed content unavailable, keeping symlinks"
-                ;;
-              remove-absent)
-                # Try to fetch, remove symlinks that fail
-                echo "Strategy: remove unfetchable symlinks"
-                $ANNEX_CMD videos/ playlists/ || true
-                # Remove any remaining git-annex symlinks
-                find videos playlists -type l 2>/dev/null | while read symlink; do
-                  target=$(readlink "$symlink")
-                  if echo "$target" | grep -q '.git/annex/objects'; then
-                    echo "Removing unfetchable symlink: $symlink"
-                    rm "$symlink"
-                  fi
-                done
-                ;;
-              *)
-                echo "Unknown get-annex strategy: $GET_ANNEX"
-                exit 1
-                ;;
-            esac
-
-            # Debug: Check if content was fetched
-            echo "Checking fetched content:"
-            ls -la videos/2026/02/*/video.mkv 2>/dev/null | head -3 || echo "No video files"
           fi
 
-          # Commit any changes (fetched content, removed symlinks, etc.)
+          # Build git annex get command
+          ANNEX_CMD="git annex get"
+          if [ -n "$ANNEX_REMOTE" ]; then
+            ANNEX_CMD="$ANNEX_CMD --from=$ANNEX_REMOTE"
+          fi
+
+          case "$GET_ANNEX" in
+            get)
+              echo "Strategy: mandatory fetch"
+              $ANNEX_CMD videos/ playlists/ || {
+                echo "ERROR: Failed to fetch all annexed content"
+                exit 1
+              }
+              ;;
+            try-get)
+              echo "Strategy: optional fetch"
+              $ANNEX_CMD videos/ playlists/ || echo "Warning: Some annexed content unavailable"
+              ;;
+            remove-absent)
+              echo "Strategy: remove unfetchable"
+              $ANNEX_CMD videos/ playlists/ || true
+              ;;
+            *)
+              echo "Unknown get-annex strategy: $GET_ANNEX"
+              exit 1
+              ;;
+          esac
+
+          # Unlock fetched files (convert symlinks to regular files for GitHub Pages)
+          # Only unlock files whose content is present
+          git annex unlock videos/ playlists/ 2>/dev/null || true
+
+          # Remove any remaining broken symlinks (content not fetched)
+          if [ "$GET_ANNEX" = "remove-absent" ]; then
+            find videos playlists -type l 2>/dev/null | while read symlink; do
+              target=$(readlink "$symlink")
+              if echo "$target" | grep -q '.git/annex/objects'; then
+                echo "Removing unfetchable: $symlink"
+                rm "$symlink"
+              fi
+            done
+          fi
+
+          # Commit unlocked content (real files instead of symlinks)
           if ! git diff --quiet || ! git diff --cached --quiet; then
             git add -A
             git commit -m "Update annexed content for GitHub Pages" || true
@@ -249,17 +256,7 @@ runs:
           echo "✓ Annexed content processed"
         fi
 
-        # Debug: Check branch exists
-        echo "Verifying $GH_BRANCH branch exists..."
-        git rev-parse --verify "$GH_BRANCH" || {
-          echo "ERROR: $GH_BRANCH branch not found after prepare-ghpages"
-          exit 1
-        }
-
-        # Debug: Show what we're about to push
-        echo "Current branch: $(git branch --show-current)"
-        echo "Branches: $(git branch -a | grep -E 'master|main|gh-pages' || echo 'none found')"
-        echo "Target repository: ${GITHUB_REPOSITORY}"
+        # Push gh-pages branch
         echo "Pushing to $GH_BRANCH branch..."
 
         # Push to gh-pages using GITHUB_TOKEN
