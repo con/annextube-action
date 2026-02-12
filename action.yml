@@ -89,12 +89,14 @@ runs:
 
     # Patch vite config: output to dist/ (expected by prepare-ghpages)
     # instead of ../web (default in recent annextube releases)
-    - name: Patch frontend vite config
+    - name: Patch frontend for gh-pages compatibility
       shell: bash
       run: |
-        if [ -f _annextube_source/frontend/vite.config.ts ]; then
-          sed -i "s|outDir:.*'../web'|outDir: 'dist'|" _annextube_source/frontend/vite.config.ts
-        fi
+        cd _annextube_source/frontend
+        # Output to dist/ (expected by prepare-ghpages) instead of ../web
+        sed -i "s|outDir:.*'../web'|outDir: 'dist'|" vite.config.ts
+        # Data lives alongside frontend at root, not in parent directory
+        sed -i "s|baseUrl: string = '\.\.'|baseUrl: string = '.'|" src/services/data-loader.ts
 
     # Setup Node.js for frontend building
     - name: Setup Node.js
