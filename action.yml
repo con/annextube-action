@@ -253,10 +253,20 @@ runs:
           done < <(find videos playlists -type l 2>/dev/null)
           echo "Resolved $RESOLVED symlinks to real files, $UNRESOLVED unresolved"
 
-          # Commit real content (bypass annex clean filter that would re-pointer files)
+          # Disable annex filters so git add stores real content, not pointers.
+          # git-annex v10+ uses filter.annex.process (long-running protocol)
+          # which overrides clean/smudge, so we must disable all three.
+          # Also strip filter=annex from .gitattributes as belt-and-suspenders.
+          if [ -f .gitattributes ]; then
+            sed -i '/filter=annex/d' .gitattributes
+          fi
+          git config --local filter.annex.process ""
+          git config --local filter.annex.clean cat
+          git config --local filter.annex.smudge cat
+
           if ! git diff --quiet || ! git diff --cached --quiet; then
-            git -c filter.annex.clean=cat -c filter.annex.smudge=cat add -A
-            git -c filter.annex.clean=cat -c filter.annex.smudge=cat commit -m "Update annexed content for GitHub Pages" || true
+            git add -A
+            git commit -m "Update annexed content for GitHub Pages" || true
           fi
 
           echo "✓ Annexed content processed"
