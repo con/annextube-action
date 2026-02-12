@@ -32,7 +32,7 @@ inputs:
   annextube-version:
     description: 'Version of annextube to install (default: pinned version, use "latest" for auto-upgrade)'
     required: false
-    default: 'git+https://github.com/con/annextube.git@v0.3.0#egg=annextube'
+    default: 'git+https://github.com/con/annextube.git@enh-gh_pages#egg=annextube'
 
   auto-upgrade-frontend:
     description: 'Automatically upgrade to latest annextube frontend (default: false, requires annextube-version="latest")'
