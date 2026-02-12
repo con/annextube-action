@@ -243,13 +243,22 @@ runs:
           git config --local filter.annex.clean cat
           git config --local filter.annex.smudge cat
 
-          # Unlock annexed files (replaces symlinks with real content)
-          git annex unlock videos/ playlists/ 2>/dev/null || true
+          # Unlock ALL annexed files (replaces symlinks with real content)
+          git annex unlock . 2>/dev/null || true
 
-          if [ "$GET_ANNEX" = "remove-absent" ]; then
-            # Remove any remaining broken symlinks (content not fetched)
-            find videos playlists -type l 2>/dev/null -exec rm {} +
-          fi
+          # Resolve non-annex symlinks (e.g. playlist entries -> video dirs)
+          # and remove any remaining broken symlinks
+          find . -type l 2>/dev/null | while IFS= read -r link; do
+            dir=$(dirname "$link")
+            target="$dir/$(readlink "$link")"
+            if [ -e "$target" ]; then
+              # Replace symlink with copy of target
+              rm "$link"
+              cp -a "$target" "$link"
+            elif [ "$GET_ANNEX" = "remove-absent" ]; then
+              rm "$link"
+            fi
+          done
 
           if ! git diff --quiet || ! git diff --cached --quiet; then
             git add -A
