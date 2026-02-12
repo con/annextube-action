@@ -87,6 +87,15 @@ runs:
         ref: 'v0.3.0'
         path: '_annextube_source'
 
+    # Patch vite config: output to dist/ (expected by prepare-ghpages)
+    # instead of ../web (default in recent annextube releases)
+    - name: Patch frontend vite config
+      shell: bash
+      run: |
+        if [ -f _annextube_source/frontend/vite.config.ts ]; then
+          sed -i "s|outDir:.*'../web'|outDir: 'dist'|" _annextube_source/frontend/vite.config.ts
+        fi
+
     # Setup Node.js for frontend building
     - name: Setup Node.js
       uses: actions/setup-node@v4
