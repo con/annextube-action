@@ -232,15 +232,7 @@ runs:
               ;;
           esac
 
-          # Unlock annexed files (replaces symlinks with real content)
-          git annex unlock videos/ playlists/ 2>/dev/null || true
-
-          if [ "$GET_ANNEX" = "remove-absent" ]; then
-            # Remove any remaining broken symlinks (content not fetched)
-            find videos playlists -type l 2>/dev/null -exec rm {} +
-          fi
-
-          # Disable annex filters so git add stores real content, not pointers.
+          # Disable annex filters BEFORE unlock so git doesn't re-pointer files.
           # git-annex v10+ uses filter.annex.process (long-running protocol)
           # which overrides clean/smudge, so we must disable all three.
           # Also strip filter=annex from .gitattributes as belt-and-suspenders.
@@ -250,6 +242,14 @@ runs:
           git config --local filter.annex.process ""
           git config --local filter.annex.clean cat
           git config --local filter.annex.smudge cat
+
+          # Unlock annexed files (replaces symlinks with real content)
+          git annex unlock videos/ playlists/ 2>/dev/null || true
+
+          if [ "$GET_ANNEX" = "remove-absent" ]; then
+            # Remove any remaining broken symlinks (content not fetched)
+            find videos playlists -type l 2>/dev/null -exec rm {} +
+          fi
 
           if ! git diff --quiet || ! git diff --cached --quiet; then
             git add -A
