@@ -253,10 +253,10 @@ runs:
           done < <(find videos playlists -type l 2>/dev/null)
           echo "Resolved $RESOLVED symlinks to real files, $UNRESOLVED unresolved"
 
-          # Commit unlocked content (real files instead of symlinks)
+          # Commit real content (bypass annex clean filter that would re-pointer files)
           if ! git diff --quiet || ! git diff --cached --quiet; then
-            git add -A
-            git commit -m "Update annexed content for GitHub Pages" || true
+            git -c filter.annex.clean=cat -c filter.annex.smudge=cat add -A
+            git -c filter.annex.clean=cat -c filter.annex.smudge=cat commit -m "Update annexed content for GitHub Pages" || true
           fi
 
           echo "✓ Annexed content processed"
