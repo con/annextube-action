@@ -232,26 +232,13 @@ runs:
               ;;
           esac
 
-          # Replace symlinks with actual content (for GitHub Pages serving)
-          # readlink returns paths relative to the symlink's directory,
-          # so we must resolve relative to dirname of each symlink.
-          RESOLVED=0
-          UNRESOLVED=0
-          while IFS= read -r symlink; do
-            dir=$(dirname "$symlink")
-            target="$dir/$(readlink "$symlink")"
-            if [ -f "$target" ]; then
-              cp --remove-destination "$target" "$symlink"
-              RESOLVED=$((RESOLVED + 1))
-            else
-              if [ "$GET_ANNEX" = "remove-absent" ]; then
-                echo "Removing unfetchable: $symlink"
-                rm "$symlink"
-              fi
-              UNRESOLVED=$((UNRESOLVED + 1))
-            fi
-          done < <(find videos playlists -type l 2>/dev/null)
-          echo "Resolved $RESOLVED symlinks to real files, $UNRESOLVED unresolved"
+          # Unlock annexed files (replaces symlinks with real content)
+          git annex unlock videos/ playlists/ 2>/dev/null || true
+
+          if [ "$GET_ANNEX" = "remove-absent" ]; then
+            # Remove any remaining broken symlinks (content not fetched)
+            find videos playlists -type l 2>/dev/null -exec rm {} +
+          fi
 
           # Disable annex filters so git add stores real content, not pointers.
           # git-annex v10+ uses filter.annex.process (long-running protocol)
